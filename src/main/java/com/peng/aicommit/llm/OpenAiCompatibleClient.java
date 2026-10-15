@@ -7,6 +7,7 @@ import com.peng.aicommit.AiCommitException;
 import com.peng.aicommit.settings.AiCommitSettings;
 
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -45,21 +46,31 @@ public class OpenAiCompatibleClient {
 
         String response;
         try {
-            response = HttpRequests.post(url, body)
+            // 注意：HttpRequests.post(url, contentType) 的第二个参数是 Content-Type 而非请求体，
+            // 请求体必须在 connect 回调里通过 request.write(...) 发送。
+            response = HttpRequests.post(url, "application/json")
                     .connectTimeout(timeoutMillis)
                     .readTimeout(timeoutMillis)
                     .useProxy(true)
                     .productNameAsUserAgent()
-                    // 让 HTTP 错误也带上响应体，便于把服务端错误原因展示给用户。
-                    .isReadResponseOnError(true)
+                    // 自行处理错误状态码，以便读取响应体并给出中文提示。
+                    .throwStatusCodeException(false)
                     .tuner(connection -> {
-                        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                         connection.setRequestProperty("Accept", "application/json");
                         connection.setRequestProperty("Authorization", "Bearer " + apiKey);
                     })
-                    .readString(indicator);
+                    .connect(request -> {
+                        request.write(body);
+                        int statusCode = ((HttpURLConnection) request.getConnection()).getResponseCode();
+                        if (statusCode >= 400) {
+                            throw new HttpStatusError(statusCode, request.readError());
+                        }
+                        return request.readString(indicator);
+                    });
+        } catch (HttpStatusError e) {
+            throw new AiCommitException(describeHttpStatus(e.getStatusCode(), e.getBody()), e);
         } catch (HttpStatusException e) {
-            throw new AiCommitException(describeHttpStatus(e), e);
+            throw new AiCommitException(describeHttpStatus(e.getStatusCode(), safeReadError(e)), e);
         } catch (SocketTimeoutException e) {
             throw new AiCommitException("请求超时，请检查网络或在设置中增大超时时间。", e);
         } catch (UnknownHostException e) {
@@ -112,6 +123,28 @@ public class OpenAiCompatibleClient {
     }
 
     /**
+     * 非 2xx 响应。携带状态码与响应体，便于翻译成用户可读的提示。
+     */
+    static class HttpStatusError extends RuntimeException {
+        private final int statusCode;
+        private final String body;
+
+        HttpStatusError(int statusCode, String body) {
+            super("HTTP " + statusCode);
+            this.statusCode = statusCode;
+            this.body = body;
+        }
+
+        int getStatusCode() {
+            return statusCode;
+        }
+
+        String getBody() {
+            return body;
+        }
+    }
+
+    /**
      * 一次请求所需的端点信息，便于脱离已保存设置直接测试。
      */
     public static final class EndpointConfig {
@@ -134,12 +167,17 @@ public class OpenAiCompatibleClient {
     /**
      * 把 HTTP 状态码翻译成对用户有意义的中文提示。
      */
-    static String describeHttpStatus(HttpStatusException e) {
-        String detail = ChatResponseParser.extractError(safeReadError(e));
+    static String describeHttpStatus(int statusCode, String responseBody) {
+        String detail = ChatResponseParser.extractError(responseBody);
+        if (detail == null && responseBody != null && !responseBody.trim().isEmpty()) {
+            String trimmed = responseBody.trim();
+            // 非 JSON 的响应体（如网关 HTML）截断后直接展示，避免提示为空。
+            detail = trimmed.length() > 200 ? trimmed.substring(0, 200) + "…" : trimmed;
+        }
         String suffix = detail == null ? "" : "（" + detail + "）";
-        switch (e.getStatusCode()) {
+        switch (statusCode) {
             case 400:
-                return "请求被拒绝，请检查模型名称是否正确。" + suffix;
+                return "请求被拒绝，请检查模型名称与 Base URL 是否正确。" + suffix;
             case 401:
             case 403:
                 return "API Key 无效或没有权限，请在设置中检查密钥。" + suffix;
@@ -148,10 +186,10 @@ public class OpenAiCompatibleClient {
             case 429:
                 return "请求过于频繁或额度不足，请稍后重试。" + suffix;
             default:
-                if (e.getStatusCode() >= 500) {
-                    return "服务端返回错误（HTTP " + e.getStatusCode() + "），请稍后重试。" + suffix;
+                if (statusCode >= 500) {
+                    return "服务端返回错误（HTTP " + statusCode + "），请稍后重试。" + suffix;
                 }
-                return "请求失败（HTTP " + e.getStatusCode() + "）。" + suffix;
+                return "请求失败（HTTP " + statusCode + "）。" + suffix;
         }
     }
 
