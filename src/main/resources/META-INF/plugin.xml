@@ -21,7 +21,7 @@
   <extensions defaultExtensionNs="com.intellij">
     <applicationService serviceImplementation="com.peng.aicommit.settings.AiCommitSettings"/>
     <applicationConfigurable
-        instance="com.peng.aicommit.settings.AiCommitConfigurable"
+        instance="com.peng.aicommit.ui.AiCommitConfigurable"
         id="com.peng.aicommit.settings"
         displayName="AI Commit Message"
         parentId="tools"/>
