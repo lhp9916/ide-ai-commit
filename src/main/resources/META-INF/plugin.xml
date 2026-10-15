@@ -1,0 +1,44 @@
+<idea-plugin>
+  <id>com.peng.aicommit</id>
+  <name>AI Commit Message</name>
+  <vendor>peng</vendor>
+  <description><![CDATA[
+    Generates commit messages with AI from the changes you have staged or checked in the commit dialog.
+    <br/>
+    Adds a button to the commit message toolbar: it analyses the selected changes and writes a commit
+    message straight into the commit message box. Works with OpenAI-compatible endpoints including
+    DeepSeek, Qwen (DashScope), Zhipu GLM, Kimi (Moonshot) and SiliconFlow, and also supports a fully
+    custom endpoint. The API key is stored in the IDE credential store.
+    <br/>
+    在提交消息框工具栏添加一个按钮，点击后自动分析已勾选的变更并调用大模型生成提交消息，直接填入提交框。
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.vcs</depends>
+
+  <idea-version since-build="221"/>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <applicationService serviceImplementation="com.peng.aicommit.settings.AiCommitSettings"/>
+    <applicationConfigurable
+        instance="com.peng.aicommit.settings.AiCommitConfigurable"
+        id="com.peng.aicommit.settings"
+        displayName="AI Commit Message"
+        parentId="tools"/>
+    <notificationGroup
+        id="AI Commit Message"
+        displayName="AI Commit Message"
+        displayType="BALLOON"
+        isLogByDefault="false"/>
+  </extensions>
+
+  <actions>
+    <action id="AiCommit.GenerateMessage"
+            class="com.peng.aicommit.ui.AiCommitAction"
+            text="AI 生成提交消息"
+            description="根据已勾选的变更自动生成提交消息"
+            icon="/icons/aiCommit.svg">
+      <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>
+    </action>
+  </actions>
+</idea-plugin>
