@@ -41,11 +41,31 @@ JetBrains IDE 插件：在提交消息框工具栏加一个按钮，点击后分
 ## 设置项
 
 - **提交消息风格**：中文 Conventional Commits（默认）、中文纯描述、英文 Conventional Commits。
+- **严格模式**：开启后按 Conventional Commits 1.0.0 校验生成结果，不合规自动把问题回喂给模型重写一次；重写仍不合规则保留更接近规范的那一版，不阻塞使用。默认关闭（会多一次请求）。
 - **附加要求**：追加到系统提示词的额外约束，例如「不要使用 emoji」。
 - **单文件差异上限 / 总差异上限**：默认 6000 / 24000 字符，超出时按文件截断并保留完整文件清单。
 - **请求超时**：默认 60 秒。
 
 API Key 通过 IDE 凭据库（`PasswordSafe`）加密存储，不写入明文配置；凭据库不可用时仅保留在内存中并在设置页提示。
+
+## 生成规范
+
+生成结果遵循 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/zh-hans/v1.0.0/)：
+
+```
+<type>(<scope>): <描述>
+
+正文要点（2-4 条，每条以 "- " 开头）
+
+可选的脚注，如 Refs: #123
+```
+
+- **type**：`feat`、`fix`、`refactor`、`perf`、`docs`、`style`、`test`、`build`、`ci`、`chore`、`revert`
+- **scope**：简短小写模块名（如 `upload`），不是文件名或驼峰名；无法判断时整体省略
+- **破坏性变更**：删除或重命名公开 API、改函数签名或默认值、改配置项导致不兼容时，加 `!` 并用 `BREAKING CHANGE:` 脚注说明迁移方式；无法确认是否破坏兼容时不加
+- **首行长度**：不超过 100 字符，对齐 commitlint 的 `header-max-length` 默认值
+
+严格模式的校验规则对齐 `@commitlint/config-conventional` 默认配置：`type-enum`、`type-case`、`scope-case`、`subject-empty`、`subject-full-stop`、`header-max-length`、`body-leading-blank`。
 
 ## 构建
 

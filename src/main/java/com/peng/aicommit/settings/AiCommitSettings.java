@@ -112,6 +112,17 @@ public class AiCommitSettings implements PersistentStateComponent<AiCommitSettin
     }
 
     /**
+     * 严格模式：生成结果会按 Conventional Commits 校验，不合规则自动重试一次。
+     */
+    public boolean isStrictMode() {
+        return state.strictMode;
+    }
+
+    public void setStrictMode(boolean value) {
+        state.strictMode = value;
+    }
+
+    /**
      * 判断用户是否填了 Base URL 与模型，用于给出更明确的提示。
      */
     public boolean hasEndpointConfigured() {
@@ -127,6 +138,7 @@ public class AiCommitSettings implements PersistentStateComponent<AiCommitSettin
         public int perFileChars = DEFAULT_PER_FILE_CHARS;
         public int totalChars = DEFAULT_TOTAL_CHARS;
         public int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
+        public boolean strictMode = false;
     }
 
     @Nullable

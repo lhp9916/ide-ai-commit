@@ -54,6 +54,7 @@ public class SettingsTest {
         assertTrue(state.perFileChars > 0);
         assertTrue(state.totalChars > 0);
         assertTrue(state.timeoutSeconds > 0);
+        assertFalse("严格模式默认关闭，避免多一次请求", state.strictMode);
     }
 
     @Test

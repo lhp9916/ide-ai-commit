@@ -81,4 +81,50 @@ public class PromptBuilderTest {
         String prompt = PromptBuilder.buildUserPrompt("变更文件（1 个）：\n- a.txt (修改)");
         assertTrue(prompt.contains("a.txt"));
     }
+
+    @Test
+    public void conventionalChinesePromptGuidesBreakingChange() {
+        String prompt = PromptBuilder.buildSystemPrompt(MessageStyle.CONVENTIONAL_ZH, "");
+        assertTrue("应说明破坏性变更的标记方式", prompt.contains("破坏性变更"));
+        assertTrue("应要求使用 ! 标记", prompt.contains("`!`"));
+        assertTrue("应要求 BREAKING CHANGE 脚注", prompt.contains("BREAKING CHANGE"));
+    }
+
+    @Test
+    public void conventionalChinesePromptSupportsRevertAndFooters() {
+        String prompt = PromptBuilder.buildSystemPrompt(MessageStyle.CONVENTIONAL_ZH, "");
+        assertTrue("类型列表应包含 revert", prompt.contains("revert"));
+        assertTrue("应说明 issue 脚注写法", prompt.contains("Refs") || prompt.contains("Closes"));
+    }
+
+    @Test
+    public void conventionalChinesePromptStatesHeaderLimit() {
+        String prompt = PromptBuilder.buildSystemPrompt(MessageStyle.CONVENTIONAL_ZH, "");
+        assertTrue("应给出首行长度上限以对齐 header-max-length", prompt.contains("100"));
+    }
+
+    @Test
+    public void strictModePromptIsMarked() {
+        String normal = PromptBuilder.buildSystemPrompt(MessageStyle.CONVENTIONAL_ZH, "", false);
+        String strict = PromptBuilder.buildSystemPrompt(MessageStyle.CONVENTIONAL_ZH, "", true);
+        assertFalse("普通模式不应出现严格模式字样", normal.contains("严格模式"));
+        assertTrue("严格模式应明确标注", strict.contains("严格模式"));
+    }
+
+    @Test
+    public void legacyTwoArgBuildStillWorks() {
+        String prompt = PromptBuilder.buildSystemPrompt(MessageStyle.CONVENTIONAL_ZH, "");
+        assertFalse("二参重载默认应为非严格模式", prompt.contains("严格模式"));
+    }
+
+    @Test
+    public void repairPromptCarriesProblemsAndPreviousOutput() {
+        String prompt = PromptBuilder.buildRepairPrompt(
+                "fix(uploadFile): 修复上传。",
+                java.util.Arrays.asList("描述结尾不要加句号", "scope 应使用小写"));
+        assertTrue("应包含上一次输出以便模型对照", prompt.contains("fix(uploadFile): 修复上传。"));
+        assertTrue("应包含第一条问题", prompt.contains("描述结尾不要加句号"));
+        assertTrue("应包含第二条问题", prompt.contains("scope 应使用小写"));
+        assertTrue("应要求只输出提交消息", prompt.contains("只输出"));
+    }
 }

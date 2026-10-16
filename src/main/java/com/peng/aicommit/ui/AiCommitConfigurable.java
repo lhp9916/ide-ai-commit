@@ -49,6 +49,7 @@ public class AiCommitConfigurable implements Configurable {
     private JBPasswordField apiKeyField;
     private JCheckBox showKeyCheckBox;
     private JComboBox<MessageStyle> styleCombo;
+    private JCheckBox strictModeCheckBox;
     private JBTextArea extraPromptArea;
     private JBTextField perFileCharsField;
     private JBTextField totalCharsField;
@@ -75,6 +76,7 @@ public class AiCommitConfigurable implements Configurable {
         apiKeyField.getEmptyText().setText("在此粘贴 API Key");
         showKeyCheckBox = new JCheckBox("显示密钥");
         styleCombo = new JComboBox<>(MessageStyle.values());
+        strictModeCheckBox = new JCheckBox("严格模式（按 Conventional Commits 校验，不合规自动重写一次）");
 
         extraPromptArea = new JBTextArea(3, 40);
         extraPromptArea.setLineWrap(true);
@@ -107,6 +109,7 @@ public class AiCommitConfigurable implements Configurable {
                 .addComponent(fetchModelsButton)
                 .addSeparator()
                 .addLabeledComponent("提交消息风格", styleCombo)
+                .addComponent(strictModeCheckBox)
                 .addLabeledComponent("附加要求", extraPromptScroll)
                 .addSeparator()
                 .addLabeledComponent("单文件差异上限（字符）", perFileCharsField)
@@ -296,6 +299,7 @@ public class AiCommitConfigurable implements Configurable {
                 || !equalsText(baseUrlField.getText(), settings.getRawBaseUrl())
                 || !equalsText(currentModel(), settings.getRawModel())
                 || style != settings.getMessageStyle()
+                || strictModeCheckBox.isSelected() != settings.isStrictMode()
                 || !equalsText(extraPromptArea.getText(), settings.getExtraPrompt())
                 || !equalsInt(perFileCharsField.getText(), settings.getPerFileChars())
                 || !equalsInt(totalCharsField.getText(), settings.getTotalChars())
@@ -340,6 +344,7 @@ public class AiCommitConfigurable implements Configurable {
         settings.setRawBaseUrl(normalize(baseUrlField.getText()));
         settings.setRawModel(currentModel());
         settings.setMessageStyle(style);
+        settings.setStrictMode(strictModeCheckBox.isSelected());
         settings.setExtraPrompt(extraPromptArea.getText() == null ? "" : extraPromptArea.getText());
         settings.setPerFileChars(perFile);
         settings.setTotalChars(total);
@@ -374,6 +379,7 @@ public class AiCommitConfigurable implements Configurable {
         setCurrentModel(settings.getRawModel());
         apiKeyField.setText(ApiKeyStore.get(provider));
         styleCombo.setSelectedItem(settings.getMessageStyle());
+        strictModeCheckBox.setSelected(settings.isStrictMode());
         extraPromptArea.setText(settings.getExtraPrompt());
         perFileCharsField.setText(String.valueOf(settings.getPerFileChars()));
         totalCharsField.setText(String.valueOf(settings.getTotalChars()));
@@ -390,6 +396,7 @@ public class AiCommitConfigurable implements Configurable {
         apiKeyField = null;
         showKeyCheckBox = null;
         styleCombo = null;
+        strictModeCheckBox = null;
         extraPromptArea = null;
         perFileCharsField = null;
         totalCharsField = null;

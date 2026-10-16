@@ -44,13 +44,50 @@ public class CommitMessageGenerator {
         }
 
         String summary = PatchTruncator.render(sections, settings.getPerFileChars(), settings.getTotalChars());
-        String systemPrompt = PromptBuilder.buildSystemPrompt(settings.getMessageStyle(), settings.getExtraPrompt());
         String userPrompt = PromptBuilder.buildUserPrompt(summary);
 
         indicator.setText("正在请求 " + provider.getDisplayName() + "…");
         OpenAiCompatibleClient client = new OpenAiCompatibleClient(settings);
-        String raw = client.complete(apiKey, systemPrompt, userPrompt, indicator);
+        MessageStyle style = settings.getMessageStyle();
+        boolean strict = settings.isStrictMode() && style != MessageStyle.PLAIN_ZH;
 
+        String systemPrompt = PromptBuilder.buildSystemPrompt(style, settings.getExtraPrompt(), strict);
+        String raw = client.complete(apiKey, systemPrompt, userPrompt, indicator);
+        String message = sanitizeOrThrow(raw);
+
+        if (strict) {
+            message = enforceConventional(client, apiKey, indicator, style, message);
+        }
+        return message;
+    }
+
+    /**
+     * 严格模式：校验不符合规范时把问题回喂给模型重写一次；
+     * 若重写仍不合规，则返回更接近规范的那一版，不阻塞用户。
+     */
+    private String enforceConventional(OpenAiCompatibleClient client, String apiKey,
+                                       ProgressIndicator indicator, MessageStyle style, String firstAttempt) {
+        List<String> problems = CommitMessageValidator.validate(firstAttempt);
+        if (problems.isEmpty()) {
+            return firstAttempt;
+        }
+
+        indicator.setText("正在按规范修正提交消息…");
+        String repairPrompt = PromptBuilder.buildRepairPrompt(firstAttempt, problems);
+        try {
+            String rawRetry = client.complete(apiKey,
+                    PromptBuilder.buildSystemPrompt(style, settings.getExtraPrompt(), true),
+                    repairPrompt, indicator);
+            String retry = sanitizeOrThrow(rawRetry);
+            // 仅在重写确实减少了问题数时才采用，避免越改越差。
+            return CommitMessageValidator.validate(retry).size() <= problems.size() ? retry : firstAttempt;
+        } catch (AiCommitException e) {
+            // 重写失败不应让整个生成失败，保留首次结果。
+            return firstAttempt;
+        }
+    }
+
+    private static String sanitizeOrThrow(String raw) {
         String message = MessageSanitizer.sanitize(raw, 0);
         if (message.isEmpty()) {
             throw new AiCommitException("模型返回了空的提交消息。");
