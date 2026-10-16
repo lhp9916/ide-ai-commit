@@ -64,6 +64,16 @@ $env:GRADLE_USER_HOME="$PWD\.gradle-home"
 
 报告输出在 `build/reports/pluginVerifier/`。
 
+### 版本号
+
+默认版本号写在 `build.gradle.kts`。发布时由 tag 派生，无需改文件：
+
+```powershell
+.\gradlew.bat buildPlugin "-PpluginVersion=1.2.3"
+```
+
+产物名为 `build/distributions/ide-ai-commit-1.2.3.zip`。
+
 ### 网络受限环境
 
 依赖下载可通过代理：
@@ -72,7 +82,25 @@ $env:GRADLE_USER_HOME="$PWD\.gradle-home"
 .\gradlew.bat buildPlugin "-Dhttp.proxyHost=127.0.0.1" "-Dhttp.proxyPort=10808" "-Dhttps.proxyHost=127.0.0.1" "-Dhttps.proxyPort=10808"
 ```
 
+## 持续集成与发布
+
+工作流位于 `.github/workflows/`：
+
+| 工作流 | 触发条件 | 行为 |
+| --- | --- | --- |
+| `build.yml` | push 任意分支、PR、手动 | 跑单测并构建插件，上传 zip 与测试报告为构建产物 |
+| `release.yml` | 推送 `v*` tag | 由 tag 派生版本号构建，创建 GitHub Release 并附带插件 zip |
+
+发布新版本：
+
+```powershell
+git tag -a v0.2.0 -m "release: v0.2.0"
+git push origin v0.2.0
+```
+
+推送后 `release.yml` 会自动产出 `ide-ai-commit-0.2.0.zip` 并挂到 Release 附件，用户可直接下载安装。
+
 ## 说明
 
-- 插件 ID 为占位的 `com.peng.aicommit`，尚未配置签名与 CI。
+- 插件 ID 为占位的 `com.peng.aicommit`，尚未配置发布签名。
 - 界面文案为中文。
