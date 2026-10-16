@@ -25,12 +25,18 @@ JetBrains IDE 插件：在提交消息框工具栏加一个按钮，点击后分
 
 | 供应商 | 默认 Base URL | 默认模型 |
 | --- | --- | --- |
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| 通义千问 DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
-| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
-| Kimi Moonshot | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
-| 硅基流动 SiliconFlow | `https://api.siliconflow.cn/v1` | `deepseek-ai/DeepSeek-V3` |
+| DeepSeek | `https://api.deepseek.com` | `deepseek-flash` |
+| 通义千问 DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen3.8-flash` |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-5.3-flash` |
+| Kimi Moonshot | `https://api.moonshot.cn/v1` | `kimi-k2.6` |
+| 硅基流动 SiliconFlow | `https://api.siliconflow.cn/v1` | `deepseek-ai/DeepSeek-V4-Flash` |
 | 自定义 | 自行填写 | 自行填写 |
+
+默认模型统一取各家的轻量/高速档 —— 生成提交消息是短任务，用旗舰模型既慢又贵。
+
+模型名迭代很快，写死在插件里必然过时。设置页的「模型」是可编辑下拉框，
+点右侧**「获取模型」**按钮即可从该供应商拉取当前可用模型列表（调用其
+`GET /models` 接口），无需等待插件更新。上表依据各家官方文档核对（2026-10）。
 
 ## 设置项
 

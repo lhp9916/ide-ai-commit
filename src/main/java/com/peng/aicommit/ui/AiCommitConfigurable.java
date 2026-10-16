@@ -7,6 +7,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBPasswordField;
@@ -31,6 +32,7 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import java.awt.Dimension;
+import java.util.List;
 
 /**
  * Settings > Tools > AI Commit Message 配置页。
@@ -42,7 +44,8 @@ public class AiCommitConfigurable implements Configurable {
     private JPanel panel;
     private JComboBox<ProviderPreset> providerCombo;
     private JBTextField baseUrlField;
-    private JBTextField modelField;
+    /** 可编辑下拉框：既能手填，也能用「获取模型」填充该供应商的在线模型列表。 */
+    private JComboBox<String> modelCombo;
     private JBPasswordField apiKeyField;
     private JCheckBox showKeyCheckBox;
     private JComboBox<MessageStyle> styleCombo;
@@ -51,6 +54,7 @@ public class AiCommitConfigurable implements Configurable {
     private JBTextField totalCharsField;
     private JBTextField timeoutField;
     private JButton testButton;
+    private JButton fetchModelsButton;
     private JBLabel memoryOnlyHint;
 
     private ProviderPreset lastProvider;
@@ -64,7 +68,9 @@ public class AiCommitConfigurable implements Configurable {
     public @Nullable JComponent createComponent() {
         providerCombo = new JComboBox<>(ProviderPreset.values());
         baseUrlField = new JBTextField();
-        modelField = new JBTextField();
+        modelCombo = new JComboBox<>();
+        modelCombo.setEditable(true);
+        modelCombo.setPrototypeDisplayValue("deepseek-ai/DeepSeek-V4-Flash");
         apiKeyField = new JBPasswordField();
         apiKeyField.getEmptyText().setText("在此粘贴 API Key");
         showKeyCheckBox = new JCheckBox("显示密钥");
@@ -81,6 +87,9 @@ public class AiCommitConfigurable implements Configurable {
 
         testButton = new JButton("测试连接");
         testButton.addActionListener(e -> runConnectionTest());
+        fetchModelsButton = new JButton("获取模型");
+        fetchModelsButton.setToolTipText("从该供应商拉取当前可用模型，填充到左侧下拉框");
+        fetchModelsButton.addActionListener(e -> runFetchModels());
         memoryOnlyHint = new JBLabel(" ");
         memoryOnlyHint.setForeground(com.intellij.ui.JBColor.RED);
 
@@ -91,10 +100,11 @@ public class AiCommitConfigurable implements Configurable {
         panel = FormBuilder.createFormBuilder()
                 .addLabeledComponent("供应商", providerCombo)
                 .addLabeledComponent("Base URL", baseUrlField)
-                .addLabeledComponent("模型", modelField)
+                .addLabeledComponent("模型", modelCombo)
                 .addLabeledComponent("API Key", apiKeyField)
                 .addComponent(showKeyCheckBox)
                 .addComponent(memoryOnlyHint)
+                .addComponent(fetchModelsButton)
                 .addSeparator()
                 .addLabeledComponent("提交消息风格", styleCombo)
                 .addLabeledComponent("附加要求", extraPromptScroll)
@@ -111,6 +121,97 @@ public class AiCommitConfigurable implements Configurable {
         return panel;
     }
 
+    /**
+     * 模型名迭代很快，写死在插件里必然过时，因此提供按需拉取。
+     */
+    private void runFetchModels() {
+        ProviderPreset provider = (ProviderPreset) providerCombo.getSelectedItem();
+        if (provider == null) {
+            return;
+        }
+        String baseUrl = normalize(baseUrlField.getText());
+        String effectiveBaseUrl = baseUrl.isEmpty() ? provider.getDefaultBaseUrl() : baseUrl;
+        String apiKey = new String(apiKeyField.getPassword()).trim();
+
+        if (effectiveBaseUrl.isEmpty()) {
+            Messages.showWarningDialog(panel, "请先填写 Base URL。", "AI Commit Message");
+            return;
+        }
+        if (apiKey.isEmpty()) {
+            Messages.showWarningDialog(panel, "请先填写 API Key，获取模型列表需要鉴权。", "AI Commit Message");
+            return;
+        }
+
+        OpenAiCompatibleClient.EndpointConfig config = new OpenAiCompatibleClient.EndpointConfig(
+                effectiveBaseUrl, currentModel(), parseTimeoutOr(settings.getTimeoutSeconds()));
+        String current = currentModel();
+
+        ProgressManager.getInstance().run(
+                new Task.Backgroundable(ProjectManager.getInstance().getDefaultProject(), "获取模型列表", false) {
+                    private List<String> models;
+                    private AiCommitException failure;
+
+                    @Override
+                    public void run(ProgressIndicator indicator) {
+                        try {
+                            models = new OpenAiCompatibleClient(config).listModels(apiKey, indicator);
+                        } catch (AiCommitException ex) {
+                            failure = ex;
+                        } catch (RuntimeException ex) {
+                            failure = new AiCommitException("获取模型列表失败：" + ex.getMessage(), ex);
+                        }
+                    }
+
+                    @Override
+                    public void onFinished() {
+                        if (failure != null) {
+                            Messages.showErrorDialog(panel, failure.getMessage(), "AI Commit Message");
+                            return;
+                        }
+                        applyModelList(models, current);
+                    }
+                });
+    }
+
+    /**
+     * 用拉取到的模型刷新下拉框，并尽量保留用户当前选择。
+     */
+    private void applyModelList(List<String> models, String preferred) {
+        if (models == null || models.isEmpty()) {
+            Messages.showInfoMessage(panel, "该供应商未返回任何模型。", "AI Commit Message");
+            return;
+        }
+        modelCombo.removeAllItems();
+        for (String model : models) {
+            modelCombo.addItem(model);
+        }
+        String target = null;
+        if (preferred != null && models.contains(preferred)) {
+            target = preferred;
+        } else {
+            target = models.get(0);
+        }
+        modelCombo.setSelectedItem(target);
+        Messages.showInfoMessage(panel,
+                "已获取 " + models.size() + " 个模型，当前选择：" + target, "AI Commit Message");
+    }
+
+    /**
+     * 读取模型下拉框当前值，兼容可编辑状态下用户手输的内容。
+     */
+    private String currentModel() {
+        Object editorValue = modelCombo.isEditable() ? modelCombo.getEditor().getItem() : null;
+        Object value = editorValue != null ? editorValue : modelCombo.getSelectedItem();
+        return value == null ? "" : value.toString().trim();
+    }
+
+    private void setCurrentModel(String model) {
+        modelCombo.setSelectedItem(model == null ? "" : model);
+        if (modelCombo.isEditable()) {
+            modelCombo.getEditor().setItem(model == null ? "" : model);
+        }
+    }
+
     private void onProviderChanged() {
         ProviderPreset selected = (ProviderPreset) providerCombo.getSelectedItem();
         if (selected == null) {
@@ -118,7 +219,7 @@ public class AiCommitConfigurable implements Configurable {
         }
         // 仅在用户未自定义时，用新预设的默认值覆盖，避免丢失手填内容。
         baseUrlField.setText(PresetResolver.resolveBaseUrl(lastProvider, selected, baseUrlField.getText()));
-        modelField.setText(PresetResolver.resolveModel(lastProvider, selected, modelField.getText()));
+        setCurrentModel(PresetResolver.resolveModel(lastProvider, selected, currentModel()));
         lastProvider = selected;
         apiKeyField.setText(ApiKeyStore.get(selected));
         updateMemoryOnlyHint(selected);
@@ -138,7 +239,7 @@ public class AiCommitConfigurable implements Configurable {
             return;
         }
         String baseUrl = baseUrlField.getText() == null ? "" : baseUrlField.getText().trim();
-        String model = modelField.getText() == null ? "" : modelField.getText().trim();
+        String model = currentModel();
         String effectiveBaseUrl = baseUrl.isEmpty() ? provider.getDefaultBaseUrl() : baseUrl;
         String effectiveModel = model.isEmpty() ? provider.getDefaultModel() : model;
         String apiKey = new String(apiKeyField.getPassword());
@@ -156,7 +257,7 @@ public class AiCommitConfigurable implements Configurable {
         OpenAiCompatibleClient.EndpointConfig config = new OpenAiCompatibleClient.EndpointConfig(
                 effectiveBaseUrl, effectiveModel, parseTimeoutOr(settings.getTimeoutSeconds()));
 
-        Project project = com.intellij.openapi.project.ProjectManager.getInstance().getDefaultProject();
+        Project project = ProjectManager.getInstance().getDefaultProject();
         ProgressManager.getInstance().run(new Task.Backgroundable(project, "测试 AI 服务连接", false) {
             @Override
             public void run(ProgressIndicator indicator) {
@@ -193,7 +294,7 @@ public class AiCommitConfigurable implements Configurable {
         String key = new String(apiKeyField.getPassword());
         return provider != settings.getProvider()
                 || !equalsText(baseUrlField.getText(), settings.getRawBaseUrl())
-                || !equalsText(modelField.getText(), settings.getRawModel())
+                || !equalsText(currentModel(), settings.getRawModel())
                 || style != settings.getMessageStyle()
                 || !equalsText(extraPromptArea.getText(), settings.getExtraPrompt())
                 || !equalsInt(perFileCharsField.getText(), settings.getPerFileChars())
@@ -237,7 +338,7 @@ public class AiCommitConfigurable implements Configurable {
 
         settings.setProvider(provider);
         settings.setRawBaseUrl(normalize(baseUrlField.getText()));
-        settings.setRawModel(normalize(modelField.getText()));
+        settings.setRawModel(currentModel());
         settings.setMessageStyle(style);
         settings.setExtraPrompt(extraPromptArea.getText() == null ? "" : extraPromptArea.getText());
         settings.setPerFileChars(perFile);
@@ -270,7 +371,7 @@ public class AiCommitConfigurable implements Configurable {
         lastProvider = provider;
         providerCombo.setSelectedItem(provider);
         baseUrlField.setText(settings.getRawBaseUrl());
-        modelField.setText(settings.getRawModel());
+        setCurrentModel(settings.getRawModel());
         apiKeyField.setText(ApiKeyStore.get(provider));
         styleCombo.setSelectedItem(settings.getMessageStyle());
         extraPromptArea.setText(settings.getExtraPrompt());
@@ -285,7 +386,7 @@ public class AiCommitConfigurable implements Configurable {
         panel = null;
         providerCombo = null;
         baseUrlField = null;
-        modelField = null;
+        modelCombo = null;
         apiKeyField = null;
         showKeyCheckBox = null;
         styleCombo = null;

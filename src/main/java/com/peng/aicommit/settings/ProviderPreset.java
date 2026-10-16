@@ -4,11 +4,13 @@ package com.peng.aicommit.settings;
  * 内置供应商预设。全部使用 OpenAI 兼容的 /chat/completions 协议。
  */
 public enum ProviderPreset {
-    DEEPSEEK("DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"),
-    DASHSCOPE("通义千问 DashScope", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-    ZHIPU("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
-    MOONSHOT("Kimi Moonshot", "https://api.moonshot.cn/v1", "moonshot-v1-8k"),
-    SILICONFLOW("硅基流动 SiliconFlow", "https://api.siliconflow.cn/v1", "deepseek-ai/DeepSeek-V3"),
+    // 各供应商的 Base URL 与默认模型均依据官方文档确认（2026-10）。
+    // DeepSeek 官方给出的 OpenAI 兼容 base_url 不带 /v1，客户端会自行拼接 /chat/completions。
+    DEEPSEEK("DeepSeek", "https://api.deepseek.com", "deepseek-flash"),
+    DASHSCOPE("通义千问 DashScope", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.8-flash"),
+    ZHIPU("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash"),
+    MOONSHOT("Kimi Moonshot", "https://api.moonshot.cn/v1", "kimi-k2.6"),
+    SILICONFLOW("硅基流动 SiliconFlow", "https://api.siliconflow.cn/v1", "deepseek-ai/DeepSeek-V4-Flash"),
     CUSTOM("自定义", "", "");
 
     private final String displayName;

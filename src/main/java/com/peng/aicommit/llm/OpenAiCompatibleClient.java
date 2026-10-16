@@ -89,6 +89,17 @@ public class OpenAiCompatibleClient {
      * 拼接 chat/completions 地址，兼容用户填写带或不带尾斜杠、带或不带 /v1 的 Base URL。
      */
     public static String buildChatCompletionsUrl(String baseUrl) {
+        return appendPath(baseUrl, "/chat/completions");
+    }
+
+    /**
+     * 拼接 GET /models 地址，用于拉取该供应商当前可用的模型列表。
+     */
+    public static String buildModelsUrl(String baseUrl) {
+        return appendPath(baseUrl, "/models");
+    }
+
+    private static String appendPath(String baseUrl, String suffix) {
         String trimmed = baseUrl == null ? "" : baseUrl.trim();
         while (trimmed.endsWith("/")) {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
@@ -96,10 +107,54 @@ public class OpenAiCompatibleClient {
         if (trimmed.isEmpty()) {
             throw new AiCommitException("尚未配置 Base URL，请在设置中填写。");
         }
-        if (trimmed.endsWith("/chat/completions")) {
+        if (trimmed.endsWith(suffix)) {
             return trimmed;
         }
-        return trimmed + "/chat/completions";
+        return trimmed + suffix;
+    }
+
+    /**
+     * 拉取该供应商当前可用的模型列表。模型更新频繁，由用户按需刷新而不是写死在插件里。
+     */
+    public List<String> listModels(String apiKey, ProgressIndicator indicator) throws AiCommitException {
+        String url = buildModelsUrl(config.baseUrl);
+        int timeoutMillis = config.timeoutSeconds * 1000;
+
+        String response;
+        try {
+            response = HttpRequests.request(url)
+                    .connectTimeout(timeoutMillis)
+                    .readTimeout(timeoutMillis)
+                    .useProxy(true)
+                    .productNameAsUserAgent()
+                    .throwStatusCodeException(false)
+                    .tuner(connection -> {
+                        connection.setRequestProperty("Accept", "application/json");
+                        connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+                    })
+                    .connect(request -> {
+                        int statusCode = ((HttpURLConnection) request.getConnection()).getResponseCode();
+                        if (statusCode >= 400) {
+                            throw new HttpStatusError(statusCode, request.readError());
+                        }
+                        return request.readString(indicator);
+                    });
+        } catch (HttpStatusError e) {
+            throw new AiCommitException(describeHttpStatus(e.getStatusCode(), e.getBody()), e);
+        } catch (HttpStatusException e) {
+            throw new AiCommitException(describeHttpStatus(e.getStatusCode(), safeReadError(e)), e);
+        } catch (SocketTimeoutException e) {
+            throw new AiCommitException("请求超时，请检查网络或在设置中增大超时时间。", e);
+        } catch (UnknownHostException e) {
+            throw new AiCommitException("无法解析服务地址，请检查 Base URL 与网络连接。", e);
+        } catch (IOException e) {
+            throw new AiCommitException("网络请求失败：" + e.getMessage(), e);
+        }
+
+        if (response == null || response.trim().isEmpty()) {
+            throw new AiCommitException("服务返回了空响应。");
+        }
+        return ModelListParser.extractModelIds(response);
     }
 
     static String buildRequestBody(String model, String systemPrompt, String userPrompt) {
