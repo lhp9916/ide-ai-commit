@@ -4,7 +4,9 @@ plugins {
 }
 
 group = "com.peng"
-version = "0.1.0"
+// 版本号优先级：-PpluginVersion（CI 由 tag 派生）> 默认值。
+// 不用 -Pversion 是因为它会被 Gradle 自身的 version 属性吞掉。
+version = (findProperty("pluginVersion") as String?)?.removePrefix("v")?.takeIf { it.isNotBlank() } ?: "0.1.0"
 
 repositories {
     mavenCentral()

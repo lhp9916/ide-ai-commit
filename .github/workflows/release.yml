@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 发布版本
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 准备 Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 赋予 gradlew 执行权限
+        run: chmod +x gradlew
+
+      # 从 tag（如 v1.2.3）派生插件版本号，tag 名即为版本来源
+      - name: 解析版本号
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ]; then
+            echo "无法从 tag '${GITHUB_REF_NAME}' 解析版本号" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "解析到版本号：$VERSION"
+
+      - name: 运行单元测试
+        run: ./gradlew test --console=plain -PpluginVersion=${{ steps.version.outputs.version }}
+
+      - name: 构建插件
+        run: ./gradlew buildPlugin --console=plain -PpluginVersion=${{ steps.version.outputs.version }}
+
+      - name: 校验产物版本号
+        run: |
+          EXPECTED="ide-ai-commit-${{ steps.version.outputs.version }}.zip"
+          test -f "build/distributions/$EXPECTED" || {
+            echo "未找到预期产物 $EXPECTED，实际内容：" >&2
+            ls -l build/distributions >&2
+            exit 1
+          }
+          echo "产物确认：$EXPECTED"
+
+      - name: 创建 GitHub Release 并上传插件包
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: build/distributions/ide-ai-commit-*.zip
+          fail_on_unmatched_files: true

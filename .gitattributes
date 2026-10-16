@@ -1,0 +1,4 @@
+# 保证 shell 脚本在 Windows 检出后仍是 LF，避免在 Linux CI 上执行失败
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
